@@ -1,6 +1,7 @@
 #ifndef HUFFMAN_H_
 #define HUFFMAN_H_
 
+#include "heap.h"
 #include <algorithm>
 #include <iostream>
 #include <vector>
@@ -16,25 +17,23 @@ struct Node {
   unsigned int freq = 0;
 };
 
-bool NodePtrComparator(Node *a, Node *b) { return a->freq > b->freq; }
+bool NodePtrComparator(const Node *a, const Node *b) {
+  return a->freq < b->freq;
+}
 
 class Huffman {
 public:
   std::vector<Node> nodes;
 
   Node *BuildHuffmanTree() {
-    std::vector<Node *> heap;
+    std::vector<Node *> node_ptrs;
     for (auto &node : nodes) {
-      heap.push_back(&node);
+      node_ptrs.push_back(&node);
     }
-    std::make_heap(heap.begin(), heap.end(), NodePtrComparator);
+    Heap<Node *> heap{std::move(node_ptrs), NodePtrComparator};
     while (heap.size() != 1) {
-      std::pop_heap(heap.begin(), heap.end(), NodePtrComparator);
-      Node *a = heap.back();
-      heap.pop_back();
-      std::pop_heap(heap.begin(), heap.end(), NodePtrComparator);
-      Node *b = heap.back();
-      heap.pop_back();
+      Node *a = heap.PopHeap();
+      Node *b = heap.PopHeap();
       Node new_node;
       new_node.left = a;
       new_node.right = b;
@@ -42,10 +41,9 @@ public:
       new_node.is_leaf = false;
       new_node.freq = a->freq + b->freq;
       nodes.push_back(new_node);
-      heap.push_back(&nodes.back());
-      std::push_heap(heap.begin(), heap.end(), NodePtrComparator);
+      heap.PushHeap(&nodes.back());
     }
-    return heap[0];
+    return heap.GetHead();
   }
 
   void print(const Node *node) {
