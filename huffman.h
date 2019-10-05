@@ -3,6 +3,8 @@
 
 #include "heap.h"
 #include <algorithm>
+#include <cstdio>
+#include <fstream>
 #include <iostream>
 #include <unordered_map>
 #include <utility>
@@ -10,6 +12,8 @@
 
 namespace yycompression {
 namespace huffman {
+
+#define MAX_ENCODING_LENGTH 8
 
 struct Node {
   Node *left = nullptr;
@@ -42,12 +46,14 @@ public:
     }
     Node *root = buildHuffmanTree(nodes);
     buildMap(root);
+    /*
     print(root);
     for (const auto &pair : huffman_map_) {
       std::cout << pair.first << ' ';
       printBinary(pair.second);
       std::cout << std::endl;
     }
+    */
   }
 
   Node *buildHuffmanTree(std::vector<Node> &nodes) {
@@ -96,6 +102,46 @@ public:
 
   std::unordered_map<char, HuffmanUnit> huffman_map_;
 };
+
+bool Encode(const char *in_filename, const char *out_filename) {
+  std::ifstream in(in_filename, std::ifstream::in | std::ifstream::binary);
+  std::ofstream out(out_filename, std::ofstream::out | std::ofstream::binary);
+  char ch = '0';
+  // std::cout << ch << std::endl;
+  std::unordered_map<char, unsigned int> freq_map;
+  // std::cout << ch << std::endl;
+  while (in.get(ch)) {
+    // std::cout << 1 << std::endl;
+    // std::cout << ch << std::endl;
+    if (freq_map.find(ch) == freq_map.end()) {
+      freq_map[ch] = 0;
+    }
+    freq_map[ch] += 1;
+  }
+  Huffman huffman(freq_map);
+  for (const auto &pair : huffman.huffman_map_) {
+    out << pair.first << pair.second.ch << pair.second.length;
+  }
+  std::ifstream in_again(in_filename,
+                         std::ifstream::in | std::ifstream::binary);
+  unsigned int next_index = 0;
+  char orig_buf, encoded_buf = 0x00;
+  while (in_again.get(orig_buf)) {
+    auto &unit = huffman.huffman_map_[ch];
+    unsigned int len = unit.length;
+    while (len > 0) {
+      char bit = unit.ch & (0x01 << (len - 1)) >> (len - 1);
+      encoded_buf |= bit << (7 - next_index);
+      next_index++;
+      if (next_index == 8) {
+        out << encoded_buf;
+        next_index = 0;
+        encoded_buf = 0x00;
+      }
+      --len;
+    }
+  }
+}
 
 } // namespace huffman
 } // namespace yycompression
