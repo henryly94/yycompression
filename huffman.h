@@ -32,28 +32,22 @@ bool NodePtrComparator(const Node *a, const Node *b) {
   return a->freq < b->freq;
 }
 
-class NodeFactory {
+template <typename T> class Factory {
 public:
-  Node *GetNode(Node *l, Node *r) {
-    Node *node_ptr = new Node(l, r);
-    node_ptrs_.push_back(node_ptr);
-    return node_ptr;
+  template <typename... Args> T *GetNewInstance(Args &&... args) {
+    T *T_ptr = new Node{std::forward<Args>(args)...};
+    ptrs_.push_back(T_ptr);
+    return T_ptr;
   }
 
-  Node *GetNode(char c, unsigned int f) {
-    Node *node_ptr = new Node(c, f);
-    node_ptrs_.push_back(node_ptr);
-    return node_ptr;
-  }
-
-  ~NodeFactory() {
-    for (Node *node_ptr : node_ptrs_) {
-      delete node_ptr;
+  ~Factory() {
+    for (T *ptr : ptrs_) {
+      delete ptr;
     }
   }
 
 private:
-  std::vector<Node *> node_ptrs_;
+  std::vector<T *> ptrs_;
 };
 
 struct Bits {
@@ -123,7 +117,7 @@ public:
     huffman_map_.reserve(256);
     std::vector<Node *> node_ptrs;
     for (const auto &pair : freq_map) {
-      Node *node_ptr = factory_.GetNode(pair.first, pair.second);
+      Node *node_ptr = factory_.GetNewInstance(pair.first, pair.second);
       node_ptrs.push_back(node_ptr);
     }
     Node *root = buildHuffmanTree(&node_ptrs);
@@ -138,7 +132,7 @@ private:
     while (heap.size() != 1) {
       Node *a = heap.PopHeap();
       Node *b = heap.PopHeap();
-      Node *node_ptr = factory_.GetNode(a, b);
+      Node *node_ptr = factory_.GetNewInstance(a, b);
       heap.PushHeap(node_ptr);
     }
     return heap.GetHead();
@@ -158,7 +152,7 @@ private:
     }
   }
 
-  NodeFactory factory_;
+  Factory<Node> factory_;
 };
 
 bool Encode(const char *in_filename, const char *out_filename) {
