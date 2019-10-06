@@ -35,7 +35,7 @@ bool NodePtrComparator(const Node *a, const Node *b) {
 template <typename T> class Factory {
 public:
   template <typename... Args> T *GetNewInstance(Args &&... args) {
-    T *T_ptr = new Node{std::forward<Args>(args)...};
+    T *T_ptr = new T{std::forward<Args>(args)...};
     ptrs_.push_back(T_ptr);
     return T_ptr;
   }
