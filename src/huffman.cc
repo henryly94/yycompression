@@ -1,5 +1,7 @@
 #include "huffman.h"
 
+#include <functional>
+
 namespace yycompression {
 namespace huffman {
 namespace {
@@ -9,6 +11,21 @@ bool NodePtrComparator(const Node *a, const Node *b) {
 }
 
 } // namespace
+
+std::size_t HuffmanUnitHash::operator()(const HuffmanUnit &unit) const {
+  std::hash<unsigned int> uint_hash;
+  std::hash<int64_t> int64_hash;
+  std::size_t hash_value = uint_hash(unit.length);
+  for (int i = 0; i < 4; i++) {
+    hash_value ^= int64_hash(unit.bits.data[i]);
+  }
+  return hash_value;
+}
+
+bool HuffmanUnitEq::operator()(const HuffmanUnit &a,
+                               const HuffmanUnit &b) const {
+  return a.bits == b.bits && a.length == b.length;
+}
 
 Bits Bits::operator<<(uint8_t n) {
   if (n < 64) {
@@ -34,17 +51,16 @@ std::ostream &operator<<(std::ostream &out, Bits bits) {
 }
 
 std::ostream &operator<<(std::ostream &out, const HuffmanUnit &unit) {
-  out << unit.length << unit.bits.data[0] << unit.bits.data[1]
-      << unit.bits.data[2] << unit.bits.data[3];
+  out.write((char *)&unit.length, sizeof(unit.length));
+  out.write((char *)&unit.bits.data, 32);
 }
 
 std::istream &operator>>(std::istream &in, HuffmanUnit &unit) {
-  in >> unit.length >> unit.bits.data[0] >> unit.bits.data[1] >>
-      unit.bits.data[2] >> unit.bits.data[3];
+  in.read((char *)&unit.length, sizeof(unit.length));
+  in.read((char *)&unit.bits.data, 32);
 }
 
 Huffman::Huffman(const std::unordered_map<char, unsigned int> &freq_map) {
-  huffman_map_.reserve(256);
   std::vector<Node *> node_ptrs;
   for (const auto &pair : freq_map) {
     Node *node_ptr = factory_.GetNewInstance(pair.first, pair.second);
@@ -52,6 +68,18 @@ Huffman::Huffman(const std::unordered_map<char, unsigned int> &freq_map) {
   }
   Node *root = buildHuffmanTree(node_ptrs);
   buildMap(root);
+  buildReverseMap();
+}
+
+Huffman::Huffman(std::ifstream &in, int n) {
+  for (int i = 0; i < n; i++) {
+    HuffmanUnit unit;
+    char ch;
+    in.get(ch);
+    in >> unit;
+    huffman_map_[ch] = std::move(unit);
+  }
+  buildReverseMap();
 }
 
 Node *Huffman::buildHuffmanTree(const std::vector<Node *> &node_ptrs) {
@@ -63,6 +91,12 @@ Node *Huffman::buildHuffmanTree(const std::vector<Node *> &node_ptrs) {
     heap.PushHeap(node_ptr);
   }
   return heap.GetHead();
+}
+
+void Huffman::buildReverseMap() {
+  for (const auto &pair : huffman_map_) {
+    reverse_map_[pair.second] = pair.first;
+  }
 }
 
 void Huffman::buildMap(Node *root) { buildMap(root, Bits{}, 0); }

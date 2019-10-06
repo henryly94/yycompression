@@ -29,7 +29,7 @@ struct Node {
 
 struct Bits {
   int64_t data[4];
-  int64_t get(uint8_t index) { return (data[index / 64] >> (index % 64)) | 1; }
+  int64_t get(uint8_t index) { return (data[index / 64] >> (index % 64)) & 1; }
 
   void set(uint8_t index, int64_t value) {
     data[index / 64] |= (1 & value) << (index % 64);
@@ -46,25 +46,42 @@ struct Bits {
   Bits(const Bits &bits)
       : data{bits.data[0], bits.data[1], bits.data[2], bits.data[3]} {}
   Bits &operator=(const Bits &bits) { std::memcpy(data, bits.data, 32); }
+  bool operator==(const Bits &bits) const {
+    return memcmp(data, bits.data, 32) == 0;
+  }
   friend std::ostream &operator<<(std::ostream &out, Bits bits);
 };
 
 struct HuffmanUnit {
   Bits bits;
   unsigned int length;
-
+  HuffmanUnit() : bits(), length(0) {}
+  HuffmanUnit(Bits bits, unsigned int length) : bits(bits), length(length) {}
   friend std::ostream &operator<<(std::ostream &out, const HuffmanUnit &unit);
   friend std::istream &operator>>(std::istream &in, HuffmanUnit &unit);
+};
+
+struct HuffmanUnitHash {
+  std::size_t operator()(const HuffmanUnit &unit) const;
+};
+
+struct HuffmanUnitEq {
+  bool operator()(const HuffmanUnit &a, const HuffmanUnit &b) const;
 };
 
 class Huffman {
 public:
   explicit Huffman(const std::unordered_map<char, unsigned int> &freq_map);
+  explicit Huffman(std::ifstream &in, int n);
 
   std::unordered_map<char, HuffmanUnit> huffman_map_;
+  std::unordered_map<HuffmanUnit, char, HuffmanUnitHash, HuffmanUnitEq>
+      reverse_map_;
 
 private:
   Node *buildHuffmanTree(const std::vector<Node *> &node_ptrs);
+
+  void buildReverseMap();
 
   void buildMap(Node *root);
 

@@ -21,7 +21,16 @@ target_link_libraries(
   huffman
 )
 
+add_executable(
+  decoder_main
+  decoder_main.cc
+)
+target_link_libraries(
+  decoder_main
+  huffman
+)
+
 install(
-  TARGETS encoder_main
+  TARGETS encoder_main decoder_main
   DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/.."
 )
