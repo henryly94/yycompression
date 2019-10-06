@@ -4,7 +4,9 @@
 #include "heap.h"
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <unordered_map>
 #include <utility>
@@ -19,100 +21,152 @@ struct Node {
   Node *left = nullptr;
   Node *right = nullptr;
   char ch = '\0';
-  bool is_leaf = true;
-  unsigned int freq = 0;
+  int freq = 0;
   Node(char c, unsigned int f)
-      : left(nullptr), right(nullptr), ch(c), is_leaf(true), freq(f) {}
+      : left(nullptr), right(nullptr), ch(c), freq(f) {}
   Node(Node *l, Node *r)
-      : left(l), right(r), ch('|'), is_leaf(false), freq(l->freq + r->freq) {}
+      : left(l), right(r), ch('|'), freq(l->freq + r->freq) {}
 };
 
 bool NodePtrComparator(const Node *a, const Node *b) {
   return a->freq < b->freq;
 }
 
+class NodeFactory {
+public:
+  Node *GetNode(Node *l, Node *r) {
+    Node *node_ptr = new Node(l, r);
+    node_ptrs_.push_back(node_ptr);
+    return node_ptr;
+  }
+
+  Node *GetNode(char c, unsigned int f) {
+    Node *node_ptr = new Node(c, f);
+    node_ptrs_.push_back(node_ptr);
+    return node_ptr;
+  }
+
+  ~NodeFactory() {
+    for (Node *node_ptr : node_ptrs_) {
+      delete node_ptr;
+    }
+  }
+
+private:
+  std::vector<Node *> node_ptrs_;
+};
+
+struct Bits {
+  int64_t data[4];
+  int64_t get(uint8_t index) { return (data[index / 64] >> (index % 64)) | 1; }
+
+  void set(uint8_t index, int64_t value) {
+    data[index / 64] |= (1 & value) << (index % 64);
+  }
+
+  Bits operator<<(uint8_t n) {
+    if (n < 64) {
+      return Bits{data[0] << n, data[1] << n | data[0] >> (64 - n),
+                  data[2] << n | data[1] >> (64 - n),
+                  data[3] << n | data[2] >> (64 - n)};
+    } else if (n < 128) {
+      return Bits{0, data[0] << (n - 64),
+                  data[1] << (n - 64) | data[0] >> (128 - n),
+                  data[2] << (n - 64) | data[1] >> (128 - n)};
+    } else if (n < 192) {
+      return Bits{0, 0, data[0] << (n - 128),
+                  data[1] << (n - 128) | data[0] >> (192 - n)};
+    } else {
+      return Bits{0, 0, 0, data[0] << (n - 192)};
+    }
+  }
+
+  Bits &operator<<=(uint8_t n) {
+    *this = *this << n;
+    return *this;
+  }
+  Bits() : data{0, 0, 0, 0} {}
+  Bits(int64_t a, int64_t b, int64_t c, int64_t d) : data{a, b, c, d} {}
+  Bits(const Bits &bits)
+      : data{bits.data[0], bits.data[1], bits.data[2], bits.data[3]} {}
+  Bits &operator=(const Bits &bits) { std::memcpy(data, bits.data, 32); }
+  friend std::ostream &operator<<(std::ostream &out, Bits bits);
+};
+
+inline std::ostream &operator<<(std::ostream &out, Bits bits) {
+  for (int i = 3; i >= 0; i--) {
+    out << std::setfill('0') << std::setw(16) << std::hex << bits.data[i];
+  }
+}
+
+struct HuffmanUnit {
+  Bits bits;
+  unsigned int length;
+
+  friend std::ostream &operator<<(std::ostream &out, const HuffmanUnit &unit);
+  friend std::istream &operator>>(std::istream &in, HuffmanUnit &unit);
+};
+
+inline std::ostream &operator<<(std::ostream &out, const HuffmanUnit &unit) {
+  out << unit.length << unit.bits.data[0] << unit.bits.data[1]
+      << unit.bits.data[2] << unit.bits.data[3];
+}
+
+inline std::istream &operator>>(std::istream &in, HuffmanUnit &unit) {
+  in >> unit.length >> unit.bits.data[0] >> unit.bits.data[1] >>
+      unit.bits.data[2] >> unit.bits.data[3];
+}
+
 class Huffman {
 public:
-  struct HuffmanUnit {
-    char ch;
-    unsigned short int length;
-  };
-
   explicit Huffman(std::unordered_map<char, unsigned int> freq_map) {
-    std::vector<Node> nodes;
-    nodes.reserve(freq_map.size());
-    for (const auto &pair : freq_map) {
-      nodes.emplace_back(pair.first, pair.second);
-    }
-    Node *root = buildHuffmanTree(nodes);
-    buildMap(root);
-    /*
-    print(root);
-    for (const auto &pair : huffman_map_) {
-      std::cout << pair.first << ' ';
-      printBinary(pair.second);
-      std::cout << std::endl;
-    }
-    */
-  }
-
-  Node *buildHuffmanTree(std::vector<Node> &nodes) {
+    huffman_map_.reserve(256);
     std::vector<Node *> node_ptrs;
-    for (auto &node : nodes) {
-      node_ptrs.push_back(&node);
+    for (const auto &pair : freq_map) {
+      Node *node_ptr = factory_.GetNode(pair.first, pair.second);
+      node_ptrs.push_back(node_ptr);
     }
-    Heap<Node *> heap{std::move(node_ptrs), NodePtrComparator};
-    while (heap.size() != 1) {
-      Node *a = heap.PopHeap();
-      Node *b = heap.PopHeap();
-      nodes.emplace_back(a, b);
-      heap.PushHeap(&nodes.back());
-    }
-    return heap.GetHead();
-  }
-
-  void buildMap(Node *root) { buildMap(root, 0x00, 0); }
-
-  void buildMap(Node *node, char ch, unsigned short int length) {
-    if (node == nullptr)
-      return;
-    if (node->is_leaf) {
-      huffman_map_[node->ch] = {ch, length};
-    } else {
-      char left_ch = ch << 1;
-      buildMap(node->left, left_ch, length + 1);
-      char right_ch = left_ch | 0x01;
-      buildMap(node->right, right_ch, length + 1);
-    }
-  }
-
-  void printBinary(HuffmanUnit unit) {
-    for (int i = 7 - (8 - unit.length); i >= 0; --i) {
-      std::cout << ((unit.ch & (1 << i)) ? '1' : '0');
-    }
-  }
-
-  void print(const Node *node) {
-    if (node != nullptr) {
-      std::cout << node->ch << ' ' << node->freq << std::endl;
-      print(node->left);
-      print(node->right);
-    }
+    Node *root = buildHuffmanTree(&node_ptrs);
+    buildMap(root);
   }
 
   std::unordered_map<char, HuffmanUnit> huffman_map_;
+
+private:
+  Node *buildHuffmanTree(std::vector<Node *> *node_ptrs) {
+    Heap<Node *> heap{*node_ptrs, NodePtrComparator};
+    while (heap.size() != 1) {
+      Node *a = heap.PopHeap();
+      Node *b = heap.PopHeap();
+      Node *node_ptr = factory_.GetNode(a, b);
+      heap.PushHeap(node_ptr);
+    }
+    return heap.GetHead();
+  }
+  void buildMap(Node *root) { buildMap(root, Bits{}, 0); }
+
+  void buildMap(Node *node, Bits bits, unsigned int length) {
+    if (node == nullptr)
+      return;
+    if (node->left == nullptr && node->right == nullptr) {
+      huffman_map_[node->ch] = {bits, length};
+    } else {
+      bits <<= 1;
+      buildMap(node->left, bits, length + 1);
+      bits.set(0, 1);
+      buildMap(node->right, bits, length + 1);
+    }
+  }
+
+  NodeFactory factory_;
 };
 
 bool Encode(const char *in_filename, const char *out_filename) {
   std::ifstream in(in_filename, std::ifstream::in | std::ifstream::binary);
   std::ofstream out(out_filename, std::ofstream::out | std::ofstream::binary);
   char ch = '0';
-  // std::cout << ch << std::endl;
   std::unordered_map<char, unsigned int> freq_map;
-  // std::cout << ch << std::endl;
   while (in.get(ch)) {
-    // std::cout << 1 << std::endl;
-    // std::cout << ch << std::endl;
     if (freq_map.find(ch) == freq_map.end()) {
       freq_map[ch] = 0;
     }
@@ -120,26 +174,31 @@ bool Encode(const char *in_filename, const char *out_filename) {
   }
   Huffman huffman(freq_map);
   for (const auto &pair : huffman.huffman_map_) {
-    out << pair.first << pair.second.ch << pair.second.length;
+    out << pair.first << pair.second;
   }
+  out << '\n' << '\n';
   std::ifstream in_again(in_filename,
                          std::ifstream::in | std::ifstream::binary);
   unsigned int next_index = 0;
-  char orig_buf, encoded_buf = 0x00;
+  char orig_buf;
+  int64_t encoded_buf = 0;
   while (in_again.get(orig_buf)) {
     auto &unit = huffman.huffman_map_[ch];
-    unsigned int len = unit.length;
-    while (len > 0) {
-      char bit = unit.ch & (0x01 << (len - 1)) >> (len - 1);
-      encoded_buf |= bit << (7 - next_index);
+    int len = unit.length - 1;
+    while (len >= 0) {
+      int64_t bit = unit.bits.get(len);
+      encoded_buf |= bit << (63 - next_index);
       next_index++;
-      if (next_index == 8) {
+      if (next_index == 64) {
         out << encoded_buf;
         next_index = 0;
-        encoded_buf = 0x00;
+        encoded_buf = 0;
       }
       --len;
     }
+  }
+  if (next_index != 0) {
+    out << encoded_buf;
   }
 }
 

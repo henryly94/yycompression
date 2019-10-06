@@ -20,11 +20,11 @@ public:
     make_heap();
   }
 
-  T &GetHead() { return data_[0]; }
+  T GetHead() { return data_[0]; }
 
   T PopHeap() {
     std::swap(data_.front(), data_.back());
-    T ret = std::move(data_.back());
+    T ret = data_.back();
     data_.pop_back();
     top_down(0);
     return ret;
@@ -48,11 +48,12 @@ public:
 
 private:
   void bottom_up() {
-    unsigned int i = data_.size() - 1;
+    unsigned int i = data_.size() - 1, father;
     while (i > 0) {
-      if (data_[i] < data_[i / 2]) {
-        std::swap(data_[i], data_[i / 2]);
-        i /= 2;
+      father = (i - 1) / 2;
+      if (comparator_(data_[i], data_[father])) {
+        std::swap(data_[i], data_[father]);
+        i = father;
       } else {
         return;
       }
